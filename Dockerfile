@@ -2,14 +2,23 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Install PostgreSQL client libraries
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --upgrade pip
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml ./
+RUN pip install .
+
+
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 
 COPY src ./src
 
 EXPOSE 8000
 
-CMD ["bash", "-c", "python src/manage.py migrate && python src/manage.py collectstatic --noinput && gunicorn core.wsgi:application --bind 0.0.0.0:8000 --chdir /app/src"]
+CMD ["gunicorn", "core.wsgi:application", "--bind", "0.0.0.0:8000", "--chdir", "/app/src"]
 

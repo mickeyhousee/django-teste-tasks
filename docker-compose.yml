@@ -1,13 +1,61 @@
 version: "3.9"
 
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: django_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-django_db}
+      POSTGRES_USER: ${POSTGRES_USER:-django_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-django_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-django_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  entrypoint:
+    build: .
+    container_name: django_entrypoint
+    entrypoint: ["./entrypoint.sh"]
+    working_dir: /app
+    volumes:
+      - ./src:/app/src
+    environment:
+      - DB_NAME=${POSTGRES_DB:-django_db}
+      - DB_USER=${POSTGRES_USER:-django_user}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-django_password}
+      - DB_HOST=db
+      - DB_PORT=5432
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   web:
     build: .
-    command: bash -c "python src/manage.py migrate && python src/manage.py collectstatic --noinput && gunicorn core.wsgi:application --bind 0.0.0.0:8000 --chdir /app/src"
+    container_name: django_web
+    command: gunicorn core.wsgi:application --bind 0.0.0.0:8000 --chdir /app/src
     working_dir: /app
     ports:
       - "8000:8000"
-    volumes:
-      - ./src:/app/src
+    environment:
+      - DB_NAME=${POSTGRES_DB:-django_db}
+      - DB_USER=${POSTGRES_USER:-django_user}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-django_password}
+      - DB_HOST=db
+      - DB_PORT=5432
+    depends_on:
+      entrypoint:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
+volumes:
+  postgres_data:
